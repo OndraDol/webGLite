@@ -6,55 +6,19 @@ import { setPositionAttribute, setTextureAttribute } from "../coregl/programInfo
 import { setupGl } from "../common"
 import { createSquareModel, createSquareModelWithLoadedTexture, RenderingModel } from "../../resources/models"
 import { loadTexture } from "../../resources/texture"
-import { getResourceStatus } from "../../resources/resources"
+import { getResourceStatus, ShaderSource } from "../../resources/resources"
 
-// We have the shaders as static assets as we display this scene while the resources are loading
-const vertexShader = `#version 300 es
-in vec3 position;
-uniform mat4 uProjectionMatrix;
-uniform mat4 uModelMatrix;
-
-void main() {
-    gl_PointSize = 2.0;
-    gl_Position = uProjectionMatrix * uModelMatrix * vec4(position.xyz,1.0);
+// We load these shaders independently as this scene is displayed while the main resources are loading
+async function fetchShaderSource(name: string): Promise<ShaderSource> {
+  const [fragResponse, vertResponse] = await Promise.all([
+    fetch(`shaders/${name}.frag`),
+    fetch(`shaders/${name}.vert`),
+  ])
+  return {
+    frag: await fragResponse.text(),
+    vert: await vertResponse.text(),
+  }
 }
-`
-const fragmentShader = `#version 300 es
-out lowp vec4 outputColor;
-uniform lowp vec4 uColor;
-
-void main(void) {
-    outputColor = uColor;
-}
-`
-
-const imageVertexShader = `#version 300 es
-precision highp float;
-in vec3 position;
-in vec2 textureCoords;
-uniform mat4 uProjectionMatrix;
-uniform mat4 uModelViewMatrix;
-
-out highp vec2 vTextureCoord;
-
-void main() {
-    gl_Position = uProjectionMatrix * uModelViewMatrix * vec4(position.xyz,1.0);
-    vTextureCoord = textureCoords;
-}
-`
-const imageFragmentShader = `#version 300 es
-in highp vec2 vTextureCoord;
-uniform sampler2D uSampler;
-uniform lowp float uAlpha;
-out lowp vec4 outputColor;
-
-void main(void) {
-    lowp vec4 color = texture(uSampler, vTextureCoord);
-    if (color.xyz != vec3(0,0,0)) { 
-      outputColor = vec4(color.xyz, uAlpha);
-    }
-}
-`
 
 function createImageRenderer(
   gl: WebGL2RenderingContext,
@@ -62,8 +26,9 @@ function createImageRenderer(
   projectionMatrix: mat4,
   pos: vec2,
   size: vec2,
+  imageShaderSource: ShaderSource,
 ) {
-  const shaderProgram = compileShaderProgramFromSource(gl, { frag: imageFragmentShader, vert: imageVertexShader })!
+  const shaderProgram = compileShaderProgramFromSource(gl, imageShaderSource)!
   const positionLocation = gl.getAttribLocation(shaderProgram, "position")!
   const textureCoordsLocation = gl.getAttribLocation(shaderProgram, "textureCoords")
   const projectionMatrixLocation = gl.getUniformLocation(shaderProgram, "uProjectionMatrix")!
@@ -117,7 +82,12 @@ export async function createLoadingScreenRenderer(gl: WebGL2RenderingContext) {
   let starPointVisits = 0
   const planetBias = 128 * 128 //Math.pow(128, 2)
 
-  const shaderProgram = compileShaderProgramFromSource(gl, { frag: fragmentShader, vert: vertexShader })!
+  const [shaderSource, imageShaderSource] = await Promise.all([
+    fetchShaderSource("loadingScreen"),
+    fetchShaderSource("loadingScreenImage"),
+  ])
+
+  const shaderProgram = compileShaderProgramFromSource(gl, shaderSource)!
   const positionLocation = gl.getAttribLocation(shaderProgram, "position")!
   const projectionMatrixLocation = gl.getUniformLocation(shaderProgram, "uProjectionMatrix")!
   const modelMatrixLocation = gl.getUniformLocation(shaderProgram, "uModelMatrix")
@@ -172,6 +142,7 @@ export async function createLoadingScreenRenderer(gl: WebGL2RenderingContext) {
       projectionMatrix,
       [0, 128 * scale - 46 * logoScale * 1.5],
       [239 * logoScale, 46 * logoScale],
+      imageShaderSource,
     )
     const startRenderer = createImageRenderer(
       gl,
@@ -179,6 +150,7 @@ export async function createLoadingScreenRenderer(gl: WebGL2RenderingContext) {
       projectionMatrix,
       [0, -128 * scale + 46 * logoScale],
       [(723 / 2) * logoScale, (23 / 2) * logoScale],
+      imageShaderSource,
     )
 
     return (now: number, resourcesReady: boolean) => {

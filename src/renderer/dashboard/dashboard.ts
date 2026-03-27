@@ -211,7 +211,7 @@ export function createDashboardRenderer(
 
   const draw2d = createPrimitiveRenderer(gl, true, resources, width, height)
   const scannerBackgroundRenderer = createScannerBackgroundRenderer(gl, resources, projectionMatrix, scannerScale)
-  const scannerShipRenderer = createScannerShipRenderer(gl, projectionMatrix, scannerScale)
+  const scannerShipRenderer = createScannerShipRenderer(gl, resources, projectionMatrix, scannerScale)
 
   const dispose = () => {
     draw2d.dispose()

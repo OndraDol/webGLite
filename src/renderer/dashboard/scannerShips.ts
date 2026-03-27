@@ -1,48 +1,14 @@
-import { mat4, quat, vec3 } from "gl-matrix"
+import { mat4, quat, vec3, vec4 } from "gl-matrix"
 import { Game } from "../../model/game"
-import { createSquareModel, disposeRenderingModel, RenderingModel } from "../../resources/models"
-import { compileShaderProgram } from "../../shader"
+import { createSquareModel, disposeRenderingModel } from "../../resources/models"
+import { compileShaderProgramFromSource } from "../../shader"
 import { scannerRadialWorldRange } from "../../constants"
 import { ShipRoleEnum } from "../../model/ShipInstance"
-// TODO: We need to rework this to use the shared style
-const vsSource = `#version 300 es
-    precision highp float;
-    in vec4 aVertexPosition;
-    
-    uniform mat4 uModelViewMatrix;
-    uniform mat4 uProjectionMatrix;
-    
+import { Resources } from "../../resources/resources"
+import { setCommonAttributes, setViewUniformLocations } from "../coregl/programInfo"
 
-    void main(void) {
-      gl_Position = uProjectionMatrix * uModelViewMatrix * aVertexPosition;
-    }
-  `
-const fsSource = `#version 300 es
-precision highp float;
-
-uniform vec4 uColor;
-
-out lowp vec4 outputColor;
-
-void main(void) {
-    outputColor = uColor;
-}
-`
-
-interface ProgramInfo {
-  program: WebGLProgram
-  attribLocations: {
-    vertexPosition: number
-  }
-  uniformLocations: {
-    projectionMatrix: WebGLUniformLocation
-    modelViewMatrix: WebGLUniformLocation
-    color: WebGLUniformLocation
-  }
-}
-
-function initShaderProgram(gl: WebGL2RenderingContext): ProgramInfo | null {
-  const shaderProgram = compileShaderProgram(gl, vsSource, fsSource)
+function initShaderProgram(gl: WebGL2RenderingContext, resources: Resources) {
+  const shaderProgram = compileShaderProgramFromSource(gl, resources.shaderSource.uColor)
   if (!shaderProgram) {
     return null
   }
@@ -60,25 +26,18 @@ function initShaderProgram(gl: WebGL2RenderingContext): ProgramInfo | null {
   }
 }
 
-function setPositionAttribute(gl: WebGL2RenderingContext, buffers: RenderingModel, programInfo: ProgramInfo) {
-  const numComponents = 3 // pull out 2 values per iteration
-  const type = gl.FLOAT // the data in the buffer is 32bit floats
-  const normalize = false // don't normalize
-  const stride = 0 // how many bytes to get from one set of values to the next
-  // 0 = use type and numComponents above
-  const offset = 0 // how many bytes inside the buffer to start from
-  gl.bindBuffer(gl.ARRAY_BUFFER, buffers.position)
-  gl.vertexAttribPointer(programInfo.attribLocations.vertexPosition, numComponents, type, normalize, stride, offset)
-  gl.enableVertexAttribArray(programInfo.attribLocations.vertexPosition)
-}
-
-export function createScannerShipRenderer(gl: WebGL2RenderingContext, projectionMatrix: mat4, scale: vec3) {
+export function createScannerShipRenderer(
+  gl: WebGL2RenderingContext,
+  resources: Resources,
+  projectionMatrix: mat4,
+  scale: vec3,
+) {
   // TODO: we need to position this on the bottom middle i.e (-1.0,2.0 to 1.0,0.0)
   const verticalLine = [0.5, 0.0, 0.0, 1.5, 0.0, 0.0, 1.5, 1.0, 0.0, 0.5, 1.0, 0.0]
   const lineCap = [-0.5, 0.0, 0.0, 1.5, 0.0, 0.0, 1.5, 1, 0.0, -0.5, 1, 0.0]
   const verticalLineModel = createSquareModel(gl, [0.0, 1.0, 0.0, 1.0], verticalLine)
   const lineCapModel = createSquareModel(gl, [0.0, 1.0, 0.0, 1.0], lineCap)
-  const programInfo = initShaderProgram(gl)!
+  const programInfo = initShaderProgram(gl, resources)!
 
   const dispose = () => {
     disposeRenderingModel(gl, verticalLineModel)
@@ -116,15 +75,18 @@ export function createScannerShipRenderer(gl: WebGL2RenderingContext, projection
         [0.1, 0.1, 1.0],
       )
 
+      const color =
+        ship.role === ShipRoleEnum.Cargo || ship.role === ShipRoleEnum.Asteroid
+          ? vec4.fromValues(1.0, 0.0, 0.0, 1.0)
+          : vec4.fromValues(0.0, 1.0, 0.0, 1.0)
+
       gl.useProgram(programInfo.program)
-      setPositionAttribute(gl, verticalLineModel, programInfo)
-      gl.uniformMatrix4fv(programInfo.uniformLocations.modelViewMatrix, false, verticalLineModelViewMatrix)
-      gl.uniformMatrix4fv(programInfo.uniformLocations.projectionMatrix, false, projectionMatrix)
-      if (ship.role === ShipRoleEnum.Cargo || ship.role === ShipRoleEnum.Asteroid) {
-        gl.uniform4f(programInfo.uniformLocations.color, 1.0, 0.0, 0.0, 1.0)
-      } else {
-        gl.uniform4f(programInfo.uniformLocations.color, 0.0, 1.0, 0.0, 1.0)
-      }
+      setCommonAttributes(gl, { position: verticalLineModel.position }, programInfo)
+      setViewUniformLocations(gl, programInfo, {
+        projectionMatrix,
+        modelViewMatrix: verticalLineModelViewMatrix,
+        color,
+      })
 
       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, verticalLineModel.indices)
       {
@@ -134,8 +96,11 @@ export function createScannerShipRenderer(gl: WebGL2RenderingContext, projection
         gl.drawElements(gl.TRIANGLES, vertexCount, type, offset)
       }
 
-      setPositionAttribute(gl, lineCapModel, programInfo)
-      gl.uniformMatrix4fv(programInfo.uniformLocations.modelViewMatrix, false, lineCapModelViewMatrix)
+      setCommonAttributes(gl, { position: lineCapModel.position }, programInfo)
+      setViewUniformLocations(gl, programInfo, {
+        modelViewMatrix: lineCapModelViewMatrix,
+      })
+
       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, lineCapModel.indices)
       {
         const vertexCount = lineCapModel.vertexCount
