@@ -24,10 +24,10 @@ function drawCompass(width: number, sidePanelWidth: number, draw2d: Primitives, 
   draw2d.rect([compassCenter[0], compassRadius * 2 - frameWidth], [compassRadius, frameWidth], frameColor)
   draw2d.circle(compassCenter, compassRadius, frameColor)
   draw2d.circle(compassCenter, compassRadius - frameWidth, [0, 0, 0, 1])
-  // TODO: fish out the space station
-  //const compassPointsTowards = game.player.isInSafeZone && game.localBubble.station !== null ? game.localBubble.station.position : game.localBubble.planet.position
   const compassPointsTowards =
-    game.localBubble.station !== null ? game.localBubble.station.position : game.localBubble.planet.position
+    game.player.isInSafeZone && game.localBubble.station !== null
+      ? game.localBubble.station.position
+      : game.localBubble.planet.position
   const directionVector = game.isInWitchspace
     ? vec3.fromValues(0, 0, 1)
     : vec3.normalize(vec3.create(), compassPointsTowards)
